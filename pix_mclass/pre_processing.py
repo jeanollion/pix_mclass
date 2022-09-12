@@ -2,6 +2,7 @@ import numpy as np
 import dataset_iterator.helpers as dih
 from scipy.ndimage.filters import gaussian_filter
 from random import uniform, random
+from .utils import ensure_multiplicity
 
 def sometimes(func, prob=0.5):
     return lambda im:func(im) if random()<prob else im
@@ -81,7 +82,7 @@ def get_histogram_normalization_center_scale_ranges(histogram, bins, center_perc
     assert dih is not None, "dataset_iterator package is required for this method"
     mode_value = dih.get_modal_value(histogram, bins)
     mode_percentile = dih.get_percentile_from_value(histogram, bins, mode_value)
-    print("model value={}, model percentile={}".format(mode_value, mode_percentile))
+    print("mode value={}, mode percentile={}".format(mode_value, mode_percentile))
     assert mode_percentile<scale_percentile_range[0], "mode percentile is {} and must be lower than lower bound of scale_percentile_range={}".format(mode_percentile, scale_percentile_range)
     percentiles = [max(0, mode_percentile-center_percentile_extent), min(100, mode_percentile+center_percentile_extent)]
     scale_percentile_range = ensure_multiplicity(2, scale_percentile_range)
@@ -134,7 +135,7 @@ def get_center_scale_range(dataset, raw_feature_name:str = "/raw", fluorescence:
     if fluorescence:
         bins = dih.get_histogram_bins_IPR(*dih.get_histogram(dataset, raw_feature_name, bins=1000), n_bins=256, percentiles=[0, 95], verbose=True)
         histo, _ = dih.get_histogram(dataset, raw_feature_name, bins=bins)
-        center_range, scale_range = get_normalization_center_scale_ranges(histo, bins, fluo_centile_extent, fluo_centile_range, verbose=True)
+        center_range, scale_range = get_histogram_normalization_center_scale_ranges(histo, bins, fluo_centile_extent, fluo_centile_range, verbose=True)
         print("center: [{}; {}] / scale: [{}; {}]".format(center_range[0], center_range[1], scale_range[0], scale_range[1]))
         return center_range, scale_range
     else:
