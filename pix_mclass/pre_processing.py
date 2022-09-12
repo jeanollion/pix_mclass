@@ -40,13 +40,14 @@ def get_random_scaling_function(mode, dataset=None, **kwargs):
     if mode == "PHASE_CONTRAST":
         return lambda img:random_histogram_range(img, **kwargs)
     elif mode == "FLUORESCENCE" or mode == "TRANSMITTED_LIGHT":
+        fluo = mode == "FLUORESCENCE"
         if dataset is None:
             assert "scale_range" in kwargs and "center_range" in kwargs, "if no dataset is provided, scale_range and center_range must be provided"
             scale_range = kwargs["scale_range"]
             center_range = kwargs["center_range"]
         else :
-            center_range, scale_range = get_center_scale_range(dataset, **kwargs)
-        if mode == "TRANSMITTED_LIGHT" and not kwargs.get("transmitted_light_per_image_mode", False):
+            center_range, scale_range = get_center_scale_range(dataset, fluorescence=fluo, **kwargs)
+        if not fluo and not kwargs.get("transmitted_light_per_image_mode", False):
             def fun(img):
                 center = uniform(center_range[0], center_range[1])
                 scale = uniform(scale_range[0], scale_range[1])
