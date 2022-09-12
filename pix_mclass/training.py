@@ -6,7 +6,7 @@ from math import ceil
 def get_iterator(
     dataset, scaling_function,
     input_channel_keywords:str="raw", class_keyword:str="classes", train_group_keyword:str=None,
-    batch_size:int=16,min_step_number:int=200,
+    batch_size:int=16, min_step_number:int=200,
     patch_shape:tuple=(256,256), n_tiles:int=8, zoom_range=[0.8,1.2],aspect_ratio_range=[0.8,1.2],
     elasticdeform_parameters={},
     dtype="float32" ):
@@ -45,8 +45,8 @@ def get_iterator(
         n_inputs = 1
     image_data_generators = [pp_fun]*n_inputs
     image_data_generators.append(None)
-    zero = np.zeros(shape=1, dtype=dtype)
-    one = np.ones(shape=1, dtype=dtype)
+    zero = np.zeros(shape=1, dtype=dtype)[0]
+    one = np.ones(shape=1, dtype=dtype)[0]
     iterator_params = dict(dataset=dataset,
         channel_keywords=channel_keywords,
         input_channels = list(range(n_inputs)),

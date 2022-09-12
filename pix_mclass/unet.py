@@ -81,7 +81,6 @@ def downsampling_block(input, parameters, l_idx, name):
 def upsampling_block(input, residual, params, stride, l_idx, name):
     up = Conv2DTranspose(params["filters"], kernel_size=params.get("up_kernel_size", 4), strides=stride, padding='same', activation=params.get("activation", "relu"), name=f"{name}/decoder/{l_idx}/upConv")(input)
     if residual is not None:
-        print(f"concat {l_idx}: residual: {K.shape(residual)}, up: {K.shape(up)}")
         concat = Concatenate(axis=-1, name = f"{name}/decoder/{l_idx}/concat")([residual, up])
     else:
         concat = up
