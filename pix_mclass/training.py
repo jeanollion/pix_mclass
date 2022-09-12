@@ -8,6 +8,7 @@ def get_iterator(
     input_channel_keywords:str="raw", class_keyword:str="classes", train_group_keyword:str=None,
     batch_size:int=16,min_step_number:int=200,
     patch_shape:tuple=(256,256), n_tiles:int=8, zoom_range=[0.8,1.2],aspect_ratio_range=[0.8,1.2],
+    elasticdeform_parameters={},
     dtype="float32" ):
 
     """Training Iterator.
@@ -57,6 +58,7 @@ def get_iterator(
         extract_tile_function = extract_tiles_fun,
         image_data_generators = image_data_generators,
         perform_data_augmentation=True,
+        elasticdeform_parameters=elasticdeform_parameters,
         batch_size=batch_size,
         incomplete_last_batch_mode="CONSTANT_SIZE",
         shuffle=True,
