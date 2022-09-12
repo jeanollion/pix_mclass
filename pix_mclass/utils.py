@@ -1,3 +1,4 @@
+import numpy as np
 def ensure_multiplicity(n, object):
     if object is None:
         return [None] * n
