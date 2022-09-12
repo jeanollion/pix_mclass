@@ -10,3 +10,6 @@ def ensure_multiplicity(n, object):
     elif n==0:
         return []
     return object
+
+def is_list(l):
+    return isinstance(l, (list, tuple, np.ndarray))

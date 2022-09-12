@@ -2,7 +2,7 @@ import numpy as np
 import dataset_iterator.helpers as dih
 from scipy.ndimage.filters import gaussian_filter
 from random import uniform, random
-from .utils import ensure_multiplicity
+from .utils import ensure_multiplicity, is_list
 
 def sometimes(func, prob=0.5):
     return lambda im:func(im) if random()<prob else im
