@@ -6,21 +6,21 @@ import tensorflow as tf
 ENCODER_SETTINGS = [
     [ # l1 = 128 -> 64
         {"filters":32},
-        {"filters":32, "downscale":2}
+        {"filters":32, "downscale":2, "maxpool":False}
     ],
     [  # l2 64 -> 32
         {"filters":32},
-        {"filters":32, "downscale":2}
+        {"filters":32, "downscale":2,"maxpool":False}
     ],
     [ # l3: 32->16
         {"filters":64, "kernel_size":5},
         {"filters":64},
-        {"filters":64, "downscale":2},
+        {"filters":64, "downscale":2,"maxpool":False},
     ],
     [ # l4: 16 -> 8
         {"filters":128, "kernel_size":5},
         {"filters":128},
-        {"filters":256, "downscale":2}
+        {"filters":256, "downscale":2,"maxpool":False}
     ]
 ]
 FEATURE_SETTINGS = [
@@ -69,9 +69,13 @@ def downsampling_block(input, parameters, l_idx, name):
     convolutions = [input]
     for i, params in enumerate(parameters):
         downsample = params.get("downscale", 1)
+        maxpool = params.get("maxpool", False)
         assert downsample == 1 or i == len(parameters)-1, "downscale > 1 must be last convolution"
-        conv = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3), padding='same', activation=params.get("activation", "relu"), strides = downsample, name=f"{name}/encoder/{l_idx}/conv_{i}")(convolutions[-1])
+        conv = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3), padding='same', activation=params.get("activation", "relu"), strides = 1 if maxpool else downsample, name=f"{name}/encoder/{l_idx}/conv_{i}")(convolutions[-1])
         convolutions.append(conv)
+        if downsample>1 and maxpool:
+            mp = MaxPool2D(pool_size = downsample, name=f"{name}/encoder/{l_idx}/mp_{i}")(convolutions[-1])
+            convolutions.append(mp)
     downsample = parameters[-1].get("downscale", 1)
     if downsample>1:
         return convolutions[-1], convolutions[-2], downsample
