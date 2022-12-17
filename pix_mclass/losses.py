@@ -5,7 +5,7 @@ import dataset_iterator.helpers as dih
 
 def get_class_weights(dataset, channel_keyword:str="classes"):
     histo, bins = dih.get_histogram(dataset, channel_keyword, bins=None, bin_size=1)
-    histo = histo.astype(np.float128)
+    histo = histo.astype(np.float64)
     sum = np.sum(histo)
     return sum / histo
 

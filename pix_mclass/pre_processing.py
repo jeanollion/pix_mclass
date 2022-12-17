@@ -37,7 +37,7 @@ def add_gaussian_noise(img, sigma=[0, 0.1], scale_sigma_to_image_range=False):
     gauss = np.random.normal(0,sigma,img.shape)
     return img + gauss
 
-def get_random_scaling_function(mode, dataset=None, **kwargs):
+def get_random_scaling_function(mode, dataset=None, channel_name:str=None, **kwargs):
     if mode == "PHASE_CONTRAST":
         return lambda img:random_histogram_range(img, **kwargs)
     elif mode == "FLUORESCENCE" or mode == "TRANSMITTED_LIGHT":
@@ -47,7 +47,7 @@ def get_random_scaling_function(mode, dataset=None, **kwargs):
             scale_range = kwargs["scale_range"]
             center_range = kwargs["center_range"]
         else :
-            center_range, scale_range = get_center_scale_range(dataset, fluorescence=fluo, **kwargs)
+            center_range, scale_range = get_center_scale_range(dataset, channel_name=channel_name, fluorescence=fluo, **kwargs)
         if not fluo and not kwargs.get("transmitted_light_per_image_mode", False):
             def fun(img):
                 center = uniform(center_range[0], center_range[1])
@@ -100,14 +100,14 @@ def get_histogram_normalization_center_scale_ranges(histogram, bins, center_perc
         print("normalization_center_scale: modal value: {}, center_range: [{}; {}] scale_range: [{}; {}]".format(mode_value, mode_range[0], mode_range[1], scale_range[0], scale_range[1]))
     return mode_range, scale_range
 
-def get_center_scale_range(dataset, raw_feature_name:str = "/raw", fluorescence:bool = False, tl_sd_factor:float=3., fluo_scale_centile_range:list=[75, 99.9], fluo_center_centile_extent:list=[20, 30], transmitted_light_per_image_mode:bool=True):
+def get_center_scale_range(dataset, channel_name:str = "/raw", fluorescence:bool = False, tl_sd_factor:float=3., fluo_scale_centile_range:list=[75, 99.9], fluo_center_centile_extent:list=[20, 30], transmitted_light_per_image_mode:bool=True):
     """Computes a range for center and for scale factor for data augmentation.
     Image can then be normalized using a random center C in the center range and a random scaling factor in the scale range: I -> (I - C) / S
 
     Parameters
     ----------
     dataset : datasetIO/path(str) OR list/tuple of datasetIO/path(str)
-    raw_feature_name : str
+    channel_name : str
         name of the dataset
     fluorescence : bool
         in fluoresence mode:
@@ -130,20 +130,20 @@ def get_center_scale_range(dataset, raw_feature_name:str = "/raw", fluorescence:
     if isinstance(dataset, (list, tuple)):
         scale_range, center_range = [], []
         for ds in dataset:
-            sr, cr = get_center_scale_range(ds, raw_feature_name, fluorescence, tl_sd_factor, fluo_scale_centile_range, fluo_center_centile_extent)
+            sr, cr = get_center_scale_range(ds, channel_name, fluorescence, tl_sd_factor, fluo_scale_centile_range, fluo_center_centile_extent)
             scale_range.append(sr)
             center_range.append(cr)
         if len(dataset)==1:
             return scale_range[0], center_range[0]
         return scale_range, center_range
     if fluorescence:
-        bins = dih.get_histogram_bins_IPR(*dih.get_histogram(dataset, raw_feature_name, bins=1000), n_bins=256, percentiles=[0, 95], verbose=True)
-        histo, _ = dih.get_histogram(dataset, raw_feature_name, bins=bins)
+        bins = dih.get_histogram_bins_IPR(*dih.get_histogram(dataset, channel_name, bins=1000), n_bins=256, percentiles=[0, 95], verbose=True)
+        histo, _ = dih.get_histogram(dataset, channel_name, bins=bins)
         center_range, scale_range = get_histogram_normalization_center_scale_ranges(histo, bins, fluo_center_centile_extent, fluo_scale_centile_range, verbose=True)
         print("center: [{}; {}] / scale: [{}; {}]".format(center_range[0], center_range[1], scale_range[0], scale_range[1]))
         return center_range, scale_range
     else:
-        mean, sd = dih.get_mean_sd(dataset, raw_feature_name, per_channel=True)
+        mean, sd = dih.get_mean_sd(dataset, channel_name, per_channel=True)
         mean, sd = np.mean(mean), np.mean(sd)
         print("mean: {} sd: {}".format(mean, sd))
         if transmitted_light_per_image_mode:
