@@ -37,7 +37,8 @@ def add_gaussian_noise(img, sigma=[0, 0.1], scale_sigma_to_image_range=False):
     gauss = np.random.normal(0,sigma,img.shape)
     return img + gauss
 
-def get_random_scaling_function(mode, dataset=None, channel_name:str=None, **kwargs):
+def get_random_scaling_function(mode="RANDOM_MIN_MAX", dataset=None, channel_name:str=None, **kwargs):
+    assert mode in ["PHASE_CONTRAST", "FLUORESCENCE", "TRANSMITTED_LIGHT", "RANDOM_MIN_MAX"], "invalid mode"
     if mode == "PHASE_CONTRAST":
         return lambda img:random_histogram_range(img, **kwargs)
     elif mode == "FLUORESCENCE" or mode == "TRANSMITTED_LIGHT":
@@ -61,7 +62,25 @@ def get_random_scaling_function(mode, dataset=None, channel_name:str=None, **kwa
                 scale = uniform(scale_range[0], scale_range[1])
                 return (img - center) / scale
         return fun
-
+    elif mode == "RANDOM_MIN_MAX":
+        min_centile_range=kwargs.get("min_centile_range", [0.1, 5])
+        max_centile_range=kwargs.get("max_centile_range", [95, 99.9])
+        assert min_centile_range[0]<=min_centile_range[1], "invalid min range"
+        assert max_centile_range[0]<=max_centile_range[1], "invalid max range"
+        assert min_centile_range[1]<max_centile_range[0], "invalid min and max range"
+        random_min_max_saturate = kwargs.get("random_min_max_saturate", True)
+        def fun(img):
+            min0, min1, max0, max1 = np.percentile(img, min_centile_range+max_centile_range)
+            cmin = uniform(min0, min1)
+            cmax = uniform(max0, max1)
+            if random_min_max_saturate:
+                img = adjust_histogram_range(img, min = 0, max = 1, initial_range=[cmin, cmax]) # will saturate values under cmin or over cmax, as in real life.
+            else:
+                scale = 1. / (cmax - cmin)
+                img = (img - cmin) * scale
+            return img
+        return fun
+        
 def adjust_histogram_range(img, min=0, max=1, initial_range=None):
     if initial_range is None:
         initial_range=[img.min(), img.max()]
