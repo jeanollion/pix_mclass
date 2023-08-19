@@ -22,8 +22,12 @@ def gaussian_blur(img, sig):
     else:
         return gaussian_filter(img, sig)
 
-def random_gaussian_blur(img, sig_min=1, sig_max=2):
-    sig = uniform(sig_min, sig_max)
+def random_gaussian_blur(img, sigma=(1, 2)):
+    if is_list(sigma):
+        assert len(sigma)==2 and sigma[0]<=sigma[1], "sigma should be a range"
+        sig = uniform(sigma[0], sigma[1])
+    else:
+        sig = sigma
     return gaussian_blur(img, sig)
 
 def add_gaussian_noise(img, sigma=[0, 0.1], scale_sigma_to_image_range=False):
