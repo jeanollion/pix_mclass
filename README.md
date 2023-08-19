@@ -20,16 +20,9 @@ For cell segmentation, one typically defines 3 categories of pixels: inside cell
   - use the selection brush tool to draw areas for each object class. For contours should be closed, and with a linewidth of typically 3 pixels (double click on the tool to set the size). Ssee the [doc on manual edition](https://github.com/jeanollion/bacmman/wiki/Data-Curation#creation-1)
   - automatically close the contours: from the `home` tab select the position that have been edited, chose `Segment and Track` in the task panel and `Filled Contours` in the object panel. from the `Run` menu choose `Run selected Tasks`.
 - export the training set:
-  - from the `Data Browsing` tab select all the positions in the `Segmentation and Tracking Results` panel
-  - right-click and choose `Create Selection > ViewField`
-  - in the `Selections` panel right-click on the newly created `ViewField` selection, and choose `Duplicate`, enter a name.
-  - right-click on the newly duplicated selection, choose `Filters > Non Empty` (this will remove images without segemented objects)
-  - from the `Home` tab, right-click on the `Task` panel and choose `Add new dataset extraction task`
-    - set 2 features:  `RawImage` and `Multiclass` (with all classes selected)
-    - select the previously duplicated selection
-    - set an output file (ending in .h5)
-    - click ok
-  - from the `Home` tab, right-click on the `Task` panel and choose `Run all tasks`
+  - from the `Home` tab select all the positions in the `Positions` panel
+  - right-click on the `Task` panel and choose `Extract Dataset` > `Add new PixMClass dataset extraction task`, when prompted choose a directory and enter a filename ending in .h5 (or selected an existing file, in that case the dataset will be appended)
+  - right-click on the `Task` panel and choose `Run all tasks`
 
 ## Model Training
 
