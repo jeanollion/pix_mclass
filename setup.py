@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pix_mclass",
-    version="0.0.1",
+    version="0.0.2",
     author="Jean Ollion",
     author_email="jean.ollion@polytechnique.org",
     description="Multiclass pixel classification",
@@ -24,5 +24,5 @@ setuptools.setup(
         'Programming Language :: Python :: 3',
     ],
     python_requires='>=3',
-    install_requires=['numpy', 'scipy', 'tensorflow', 'keras_preprocessing', 'dataset_iterator>=0.2.2', 'elasticdeform']
+    install_requires=['numpy', 'scipy', 'tensorflow', 'keras_preprocessing', 'dataset_iterator>=0.3.3', 'elasticdeform']
 )

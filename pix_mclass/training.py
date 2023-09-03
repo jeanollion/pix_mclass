@@ -2,10 +2,10 @@ import numpy as np
 from dataset_iterator import MultiChannelIterator, PreProcessingImageGenerator
 from dataset_iterator import extract_tile_function, extract_tile_random_zoom_function
 from math import ceil
-
+from utils import ensure_multiplicity
 def get_iterator(
     dataset, scaling_function,
-    input_channel_keywords:str="raw", class_keyword:str="classes", train_group_keyword:str=None,
+    input_channel_keywords="raw", class_keyword:str="classes", train_group_keyword:str=None,
     batch_size:int=16, min_step_number:int=200,
     patch_shape:tuple=(256,256), n_tiles:int=8, zoom_range=[0.8,1.2],aspect_ratio_range=[0.8,1.2],
     elasticdeform_parameters={},
@@ -17,9 +17,9 @@ def get_iterator(
     ----------
     dataset : either string or DatasetIO object
         if a string: path to .h5 file containing
-    train_group_keyword : string
+    train_group_keyword : str or list of stf
         keyword contained in the path of the training dataset, in order to exclude the evaluation dataset
-    scaling_function : callable
+    scaling_function : callable or list of callable
         callable applied to each image before tiling
     patch_shape : tuple. If None: no tiling is applied
     n_tiles : int
@@ -31,8 +31,6 @@ def get_iterator(
 
     """
 
-    assert callable(scaling_function)
-    pp_fun = PreProcessingImageGenerator(scaling_function)
     extract_tiles_fun = None if patch_shape is None else extract_tile_random_zoom_function(patch_shape, n_tiles=n_tiles, zoom_range=zoom_range, aspect_ratio_range=aspect_ratio_range, perform_augmentation=True, augmentation_rotate=True, random_stride=True )
 
     if isinstance(input_channel_keywords, (list, tuple)):
@@ -41,9 +39,11 @@ def get_iterator(
         n_inputs = len(input_channel_keywords)
     else:
         channel_keywords = [input_channel_keywords, class_keyword]
-        input_channel_keywords = [input_channel_keywords]
         n_inputs = 1
-    image_data_generators = [pp_fun]*n_inputs
+    scaling_function = ensure_multiplicity(n_inputs, scaling_function)
+    for sf in scaling_function:
+        assert callable(sf), "scaling function must be callable"
+    image_data_generators = [PreProcessingImageGenerator(sf) for sf in scaling_function]
     image_data_generators.append(None)
     zero = np.zeros(shape=1, dtype=dtype)[0]
     one = np.ones(shape=1, dtype=dtype)[0]

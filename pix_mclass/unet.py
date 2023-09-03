@@ -39,7 +39,7 @@ def get_unet(n_classes, n_input_channels=1, encoder_settings = ENCODER_SETTINGS,
     assert len(encoder_settings)==len(decoder_settings), "encoder and decoder must have same depth"
     input = Input(shape = (None, None, n_input_channels), name=input_name)
     if skip_sg==True:
-        skip_sg = [i for i in range(depth)]
+        skip_sg = [i for i in range(len(ENCODER_SETTINGS))]
     elif skip_sg==False or skip_sg is None:
         skip_sg = []
     elif isinstance(skip_sg, int):
