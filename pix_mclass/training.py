@@ -1,8 +1,8 @@
 import numpy as np
 from dataset_iterator import MultiChannelIterator, PreProcessingImageGenerator
-from dataset_iterator import extract_tile_function, extract_tile_random_zoom_function
+from dataset_iterator import extract_tile_random_zoom_function
 from math import ceil
-from utils import ensure_multiplicity
+from .utils import ensure_multiplicity
 def get_iterator(
     dataset, scaling_function,
     input_channel_keywords="raw", class_keyword:str="classes", train_group_keyword:str=None,
