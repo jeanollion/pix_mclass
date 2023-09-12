@@ -5,16 +5,16 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pix_mclass",
-    version="0.0.2",
+    version="0.0.3",
     author="Jean Ollion",
     author_email="jean.ollion@polytechnique.org",
     description="Multiclass pixel classification",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/jeanollion/talissman",
-    download_url = 'https://github.com/jeanollion/pix_mclass/archive/0.0.1.tar.gz',
+    url="https://github.com/jeanollion/pix_mclass",
+    download_url = 'https://github.com/jeanollion/pix_mclass/archive/0.0.3.tar.gz',
     packages=setuptools.find_packages(),
-    keywords = ['Segmentation', 'Classification', 'Microscopy'],
+    keywords = ['Segmentation', 'Classification', 'Microscopy', 'Cell'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Science/Research',
@@ -24,5 +24,5 @@ setuptools.setup(
         'Programming Language :: Python :: 3',
     ],
     python_requires='>=3',
-    install_requires=['numpy', 'scipy', 'tensorflow', 'keras_preprocessing', 'dataset_iterator>=0.3.3', 'elasticdeform']
+    install_requires=['numpy', 'scipy', 'tensorflow', 'dataset_iterator>=0.3.4', 'elasticdeform']
 )
