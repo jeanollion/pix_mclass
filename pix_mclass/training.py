@@ -8,7 +8,7 @@ def get_iterator(
     input_channel_keywords="raw", class_keyword:str="classes", train_group_keyword:str=None,
     batch_size:int=16, step_number:int=0,
     tiling_parameters:dict = None,
-    elasticdeform_parameters={},
+    elasticdeform_parameters=None,
     dtype="float32", shuffle:bool=True ):
 
     """Training Iterator.
