@@ -4,15 +4,18 @@ import numpy as np
 import dataset_iterator.helpers as dih
 
 def get_class_weights(dataset, channel_keyword:str="classes"):
-    histo, bins = dih.get_histogram(dataset, channel_keyword, bins=None, bin_size=1)
+    histo, vmin, bins = dih.get_histogram(dataset, channel_keyword, bins=None, bin_size=1, return_min_and_bin_size=True)
     histo = histo.astype(np.float64)
+    if vmin == 0: # remove non-annotated pixels
+        histo = histo[1:]
     sum = np.sum(histo)
+    #print(f"histo: {histo} sum: {sum}, vmin: {vmin}")
     return sum / histo
 
 def weighted_sparse_categorical_crossentropy(weights, dtype='float32', **cce_kwargs):
     weights_cast = np.array(weights).astype(dtype)
     cce = tf.keras.losses.SparseCategoricalCrossentropy(**cce_kwargs)
-    wfun = get_category_sample_weights_fun(weights, dtype=dtype)
+    wfun = get_category_sample_weights_fun(weights_cast, dtype=dtype)
     def loss_func(true, pred):
         true, wm = tf.split(true, 2, axis=-1)
         weights = wfun(true) * wm[...,0]
