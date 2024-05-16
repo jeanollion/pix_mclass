@@ -9,7 +9,7 @@ def get_iterator(
     batch_size:int=16, step_number:int=0,
     tiling_parameters:dict = None,
     elasticdeform_parameters=None,
-    dtype="float32", shuffle:bool=True ):
+    dtype="float32", shuffle:bool=True, memory_persistent:bool=False):
 
     """Training Iterator.
 
@@ -69,7 +69,7 @@ def get_iterator(
                            batch_size=batch_size,
                            incomplete_last_batch_mode="CONSTANT_SIZE",
                            shuffle=shuffle, step_number=step_number,
-                           dtype=dtype)
+                           dtype=dtype, memory_persistent=memory_persistent)
 
     train_it = MultiChannelIterator(**iterator_params)
     return train_it

@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="PixMClass",
-    version="0.1.0",
+    version="0.1.1",
     author="Jean Ollion",
     author_email="jean.ollion@polytechnique.org",
     description="Multiclass pixel classification",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jeanollion/pix_mclass",
-    download_url='https://github.com/jeanollion/pix_mclass/releases/download/v0.1.0/pix_mclass-0.1.0.tar.gz',
+    download_url='https://github.com/jeanollion/pix_mclass/releases/download/v0.1.1/pix_mclass-0.1.1.tar.gz',
     packages=setuptools.find_packages(),
     keywords = ['Segmentation', 'Classification', 'Microscopy', 'Cell'],
     classifiers=[
