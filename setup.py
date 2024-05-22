@@ -24,5 +24,5 @@ setuptools.setup(
         'Programming Language :: Python :: 3',
     ],
     python_requires='>=3',
-    install_requires=['numpy', 'scipy', 'tensorflow>=2.7.1', 'dataset_iterator>=0.4.0', 'elasticdeform']
+    install_requires=['numpy', 'scipy', 'tensorflow>=2.7.1', 'dataset_iterator>=0.4.4', 'elasticdeform']
 )
