@@ -4,13 +4,12 @@ import numpy as np
 import dataset_iterator.helpers as dih
 
 def get_class_weights(dataset, channel_keyword:str="classes"):
-    histo, vmin, bins = dih.get_histogram(dataset, channel_keyword, bins=None, bin_size=1, return_min_and_bin_size=True)
+    histo, vmin, bins = dih.get_histogram(dataset, channel_keyword, bins=None, bin_size=1, return_min_and_bin_size=True, max_decimation_factor=3)
     histo = histo.astype(np.float64)
     if vmin == 0: # remove non-annotated pixels
         histo = histo[1:]
     sum = np.sum(histo)
-    #print(f"histo: {histo} sum: {sum}, vmin: {vmin}")
-    return sum / histo
+    return sum / ( histo * histo.shape[0] )
 
 def weighted_sparse_categorical_crossentropy(weights, dtype='float32', **cce_kwargs):
     weights_cast = np.array(weights).astype(dtype)
