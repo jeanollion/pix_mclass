@@ -35,6 +35,34 @@ DECODER_SETTINGS = [
     {"filters":128}
 ]
 
+def get_model(architecture_type:str, n_classes:int, n_inputs:int=1, n_input_channels:int=1, **kwargs):
+    if architecture_type.lower() == "unet":
+        filters = int(kwargs.get("filters", 256))
+        n_downsampling = int(kwargs.get("n_downsampling", 4))
+        maxpool = kwargs.get("maxpool", False)
+        feature_settings = [
+            {"filters": filters, "kernel_size": 5},
+            {"filters": filters},
+        ]
+        decoder_settings = []
+        encoder_settings = []
+        for l in range(n_downsampling):
+            current_filters = int(filters / 2**(min(n_downsampling - l, n_downsampling-1)))
+            decoder_settings.append({"filters":current_filters})
+            encoder_level = []
+            if l > 1:
+                encoder_level.append({"filters":current_filters, "kernel_size":5})
+            encoder_level.append({"filters": current_filters})
+            mul = 2 if l == n_downsampling-1 else 1
+            encoder_level.append({"filters":current_filters * mul, "downscale":2, "maxpool":maxpool})
+            encoder_settings.append(encoder_level)
+        #print(f"encoder settings: {encoder_settings}")
+        #print(f"feature settings: {feature_settings}")
+        #print(f"decoder settings: {decoder_settings}")
+        return get_unet(n_classes, n_inputs=n_inputs, n_input_channels=n_input_channels, encoder_settings=encoder_settings, feature_settings=feature_settings, decoder_settings=decoder_settings, skip_omit=kwargs.get("skip_omit", None))
+    else:
+        raise ValueError(f"Unknown architecture: {architecture_type}")
+
 def get_unet(n_classes, n_inputs=1, n_input_channels=1, encoder_settings = ENCODER_SETTINGS, feature_settings= FEATURE_SETTINGS, decoder_settings=DECODER_SETTINGS, skip_sg=False, skip_omit=None, name = "unet", input_name = "unet_input"):
     assert len(encoder_settings)==len(decoder_settings), "encoder and decoder must have same depth"
     if n_inputs == 1:
@@ -58,6 +86,7 @@ def get_unet(n_classes, n_inputs=1, n_input_channels=1, encoder_settings = ENCOD
     elif isinstance(skip_omit, int):
         skip_omit = [skip_omit]
     assert isinstance(skip_omit, (list, tuple)), "invalid argument: skip_omit should be either None, int or tuple/list of int"
+    print(f"skip omit: {skip_omit}")
     residuals = []
     downsample_size = []
     for d, parameters in enumerate(encoder_settings):
