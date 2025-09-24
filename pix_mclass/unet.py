@@ -35,9 +35,17 @@ DECODER_SETTINGS = [
     {"filters":128}
 ]
 
-def get_unet(n_classes, n_input_channels=1, encoder_settings = ENCODER_SETTINGS, feature_settings= FEATURE_SETTINGS, decoder_settings=DECODER_SETTINGS, skip_sg=False, skip_omit=None, name = "unet", input_name = "unet_input"):
+def get_unet(n_classes, n_inputs=1, n_input_channels=1, encoder_settings = ENCODER_SETTINGS, feature_settings= FEATURE_SETTINGS, decoder_settings=DECODER_SETTINGS, skip_sg=False, skip_omit=None, name = "unet", input_name = "unet_input"):
     assert len(encoder_settings)==len(decoder_settings), "encoder and decoder must have same depth"
-    input = Input(shape = (None, None, n_input_channels), name=input_name)
+    if n_inputs == 1:
+        input = Input(shape = (None, None, n_input_channels), name=input_name)
+        inputs = input
+    else:
+        if isinstance(input_name, str):
+            input_name = [input_name+str(i) for i in range(n_inputs)]
+        assert len(input_name) == n_inputs
+        inputs = [Input(shape=(None, None, n_input_channels), name=input_name[i]) for i in range(n_inputs)]
+        input = Concatenate(axis=-1)(inputs)
     if skip_sg==True:
         skip_sg = [i for i in range(len(ENCODER_SETTINGS))]
     elif skip_sg==False or skip_sg is None:
@@ -63,7 +71,7 @@ def get_unet(n_classes, n_input_channels=1, encoder_settings = ENCODER_SETTINGS,
         up=upsampling_block(up, None if d in skip_omit else residuals[d], decoder_settings[d], downsample_size[d], d, name)
 
     output = Conv2D(n_classes, kernel_size=3, padding='same', activation="softmax", name=f"{name}/output")(up)
-    return Model(input, output, name=name)
+    return Model(inputs, output, name=name)
 
 def downsampling_block(input, parameters, l_idx, name):
     convolutions = [input]
