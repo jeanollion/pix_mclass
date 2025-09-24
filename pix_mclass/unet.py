@@ -86,7 +86,6 @@ def get_unet(n_classes, n_inputs=1, n_input_channels=1, encoder_settings = ENCOD
     elif isinstance(skip_omit, int):
         skip_omit = [skip_omit]
     assert isinstance(skip_omit, (list, tuple)), "invalid argument: skip_omit should be either None, int or tuple/list of int"
-    print(f"skip omit: {skip_omit}")
     residuals = []
     downsample_size = []
     for d, parameters in enumerate(encoder_settings):
