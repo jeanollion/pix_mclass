@@ -38,6 +38,7 @@ DECODER_SETTINGS = [
 def get_model(architecture_type:str, n_classes:int, n_inputs:int=1, n_input_channels:int=1, **kwargs):
     if architecture_type.lower() == "unet":
         filters = int(kwargs.get("filters", 256))
+        min_filters = int(kwargs.get("filters_min", 32))
         n_downsampling = int(kwargs.get("n_downsampling", 4))
         maxpool = kwargs.get("maxpool", False)
         feature_settings = [
@@ -47,7 +48,7 @@ def get_model(architecture_type:str, n_classes:int, n_inputs:int=1, n_input_chan
         decoder_settings = []
         encoder_settings = []
         for l in range(n_downsampling):
-            current_filters = int(filters / 2**(min(n_downsampling - l, n_downsampling-1)))
+            current_filters = max(min_filters, int(filters / 2**(n_downsampling - l)))
             decoder_settings.append({"filters":current_filters})
             encoder_level = []
             if l > 1:
