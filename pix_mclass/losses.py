@@ -1,3 +1,4 @@
+import warnings
 import tensorflow as tf
 import tensorflow.keras.backend as K
 import numpy as np
@@ -9,6 +10,13 @@ def get_class_weights(dataset, channel_keyword:str="classes"):
     if vmin == 0: # remove non-annotated pixels
         histo = histo[1:]
     sum = np.sum(histo)
+    if sum == 0:
+        warnings.warn(f"no pixels are annotated in dataset: {dataset}")
+        return np.ones_like(histo)
+    if np.any(histo == 0):
+        idx = np.nonzero(histo==0)
+        histo[idx] = 1
+        warnings.warn(f"classes {list(idx[0])} have no annotated pixels on dataset: {dataset}")
     return sum / ( histo * histo.shape[0] )
 
 def weighted_sparse_categorical_crossentropy(weights, dtype='float32', **cce_kwargs):
