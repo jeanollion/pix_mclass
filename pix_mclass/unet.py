@@ -4,9 +4,7 @@ from tensorflow.keras.models import Model
 import keras.backend as K
 import tensorflow as tf
 
-from dataset_iterator.keras_layers import Identity
-from pix_mclass.layers import ScheduledDropout, ResidualGradientLimiter, ScheduledGradientWeight, \
-    HybridThresholdL2Regularizer
+from pix_mclass.layers import ResidualGradientLimiter, HybridThresholdL2Regularizer
 from pix_mclass.window_spatial_attention import WindowSpatialAttention
 
 ENCODER_SETTINGS = [
@@ -145,15 +143,7 @@ def encoder_block(input, parameters, l_idx, total_layers, def_l2_reg:float=1e-4,
                 x = BatchNormalization(name=name+"_bn")(x)
                 x = Activation(params.get("activation", "relu"), name=name+"_act")(x)
         if residual:
-            Id = tf.keras.layers.Identity if hasattr(tf.keras.layers, 'Identity') else Identity
-            res = Id(name=f"encoder{l_idx}_skip", autocast=False)(x)
-            progress_interval = [0.2, 0.7]
-            min_progress = progress_interval[0] + (progress_interval[1] - progress_interval[0]) * (  total_layers - (l_idx + 1)) / total_layers
-            max_progress = progress_interval[0] + (progress_interval[1] - progress_interval[0]) * (  total_layers - l_idx) / total_layers  # deepest skip reaches minimal rate before shallowest skip
-            print(f"layer: {l_idx + 1}/{total_layers} progress range: [{min_progress}; {max_progress}]")
-            res = ScheduledGradientWeight(min_progress=min_progress, max_progress=max_progress, name=f"res_grad_weight{l_idx}")(res)
-            res, x = ResidualGradientLimiter(max_ratio=1., name=f"encoder{l_idx}_res_grad_limiter")( [res, x])
-            res = ScheduledDropout(rate=0.0, max_rate=0.9, min_progress=min_progress, max_progress=max_progress, spatial=True, name=f"encoder{l_idx}_res_dropout")(res) # pushes the network to use deepest features
+            res, x = ResidualGradientLimiter(max_ratio=1., name=f"encoder{l_idx}_res_grad_limiter")( x )
         if downsample>1 and maxpool:
             x = MaxPool2D(pool_size = downsample, name=f"encoder{l_idx}_mp")(x)
     downsample = parameters[-1].get("downscale", 1)
