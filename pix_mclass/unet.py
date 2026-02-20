@@ -5,7 +5,6 @@ import keras.backend as K
 import tensorflow as tf
 
 from pix_mclass.layers import ResidualGradientLimiter, HybridThresholdL2Regularizer
-from pix_mclass.window_spatial_attention import WindowSpatialAttention
 
 ENCODER_SETTINGS = [
     [ # l1 = 128 -> 64
@@ -126,22 +125,18 @@ def encoder_block(input, parameters, l_idx, total_layers, def_l2_reg:float=1e-4,
         maxpool = params.get("maxpool", False)
         residual = i == res_idx
         batch_norm = params.get("batch_norm", def_batch_norm) and not residual
+        activation = params.get("activation", def_activation)
         assert downsample == 1 or i == len(parameters)-1, "downscale > 1 must be last convolution"
         l2_reg = params.get("l2_reg", def_l2_reg)
-        if "attention_heads" in params:
-            wsa = WindowSpatialAttention(num_heads=params["attention_heads"], attention_filters=params["filters"],
-                                         l2_reg=l2_reg, position_encoding_l2_reg=l2_reg/10, add_distance_embedding=True,
-                                         window_size=params["window_size"], layer_normalization=True, name=name)
-            x = wsa(x)
-        else:
-            ker_reg, bias_reg = get_regularizers(l2_reg)
-            x = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3), padding='same',
-                       kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
-                       activation=None if batch_norm else params.get("activation", def_activation), strides = 1 if maxpool else downsample,
-                        name=name)(x)
-            if batch_norm:
-                x = BatchNormalization(name=name+"_bn")(x)
-                x = Activation(params.get("activation", def_activation), name=name+"_act")(x)
+        ker_reg, bias_reg = get_regularizers(l2_reg)
+        x = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3), padding='same',
+                   kernel_initializer=get_kernel_initializer(activation),
+                   kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
+                   activation=None if batch_norm else activation, strides = 1 if maxpool else downsample,
+                   name=name)(x)
+        if batch_norm:
+            x = BatchNormalization(name=name+"_bn")(x)
+            x = Activation(activation, name=name+"_act")(x)
         if residual:
             res, x = ResidualGradientLimiter(max_ratio=1., name=f"encoder{l_idx}_res_grad_limiter")( x )
         if downsample>1 and maxpool:
@@ -155,27 +150,40 @@ def encoder_block(input, parameters, l_idx, total_layers, def_l2_reg:float=1e-4,
 def decoder_block(input, residual, params, stride, l_idx, def_l2_reg:float=1e-4, def_activation="relu", def_batch_norm:bool=True):
     ker_reg, bias_reg = get_regularizers(params.get("l2_reg", def_l2_reg))
     batch_norm = params.get("batch_norm", def_batch_norm)
+    activation =  params.get("activation", def_activation)
     x = Conv2DTranspose(params["filters"], kernel_size=params.get("up_kernel_size", 4), strides=stride, padding='same',
+                         kernel_initializer=get_kernel_initializer(activation),
                          kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
-                         activation=None if batch_norm else params.get("activation", def_activation), name=f"decoder{l_idx}_upConv")(input)
+                         activation=None if batch_norm else activation, name=f"decoder{l_idx}_upConv")(input)
     if batch_norm:
         x = BatchNormalization(name=f"decoder{l_idx}_upConv_bn")(x)
-        x = Activation(params.get("activation", def_activation), name=f"decoder{l_idx}_upConv_act")(x)
+        x = Activation(activation, name=f"decoder{l_idx}_upConv_act")(x)
     if residual is not None:
         x = Concatenate(axis=-1, name = f"decoder{l_idx}_resConcat")([residual, x])
 
     x = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3), padding='same',
+                  kernel_initializer = get_kernel_initializer(activation),
                   kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
-                  activation=params.get("activation", def_activation), name=f"decoder{l_idx}_op1")(x)
+                  activation=activation, name=f"decoder{l_idx}_op1")(x)
     x = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3),
+                  kernel_initializer=get_kernel_initializer(activation),
                   kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
-                  padding='same', activation=None if batch_norm else params.get("activation", def_activation), name=f"decoder{l_idx}_op2")(x)
+                  padding='same', activation=None if batch_norm else activation, name=f"decoder{l_idx}_op2")(x)
     if batch_norm:
         x = BatchNormalization(name=f"decoder{l_idx}_op2_bn")(x)
-        x = Activation(params.get("activation", def_activation), name=f"decoder{l_idx}_op2_act")(x)
+        x = Activation(activation, name=f"decoder{l_idx}_op2_act")(x)
     return x
 
 def get_regularizers(l2_reg:float):
     ker_reg = HybridThresholdL2Regularizer(elementwise_strength=l2_reg, directional_strength=l2_reg * 10) if l2_reg > 0 else None
     bias_reg = HybridThresholdL2Regularizer(elementwise_strength=l2_reg, directional_strength=0) if l2_reg > 0 else None
     return ker_reg, bias_reg
+
+def get_kernel_initializer(activation:str):
+    if activation is None:
+        return "glorot_uniform"
+    activation = activation.lower()
+    if "elu" in activation or "silu" in activation or activation == "mish":
+        return "he_normal"
+    else:
+        return "glorot_uniform"
