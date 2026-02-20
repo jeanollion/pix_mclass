@@ -39,7 +39,7 @@ DECODER_SETTINGS = [
     {"filters":128}
 ]
 
-def get_model(architecture_type:str, n_classes:int, n_inputs:int=1, n_input_channels:int=1, l2_reg:float=1e-4, batch_norm:bool=True, **kwargs):
+def get_model(architecture_type:str, n_classes:int, n_inputs:int=1, n_input_channels:int=1, l2_reg:float=1e-4, batch_norm:bool=True, activation:str="relu", **kwargs):
     if architecture_type.lower() == "unet":
         filters = int(kwargs.get("filters", 256))
         min_filters = int(kwargs.get("filters_min", 32))
@@ -72,11 +72,11 @@ def get_model(architecture_type:str, n_classes:int, n_inputs:int=1, n_input_chan
         #print(f"encoder settings: {encoder_settings}")
         #print(f"feature settings: {feature_settings}")
         #print(f"decoder settings: {decoder_settings}")
-        return get_unet(n_classes, n_inputs=n_inputs, n_input_channels=n_input_channels, encoder_settings=encoder_settings, feature_settings=feature_settings, decoder_settings=decoder_settings, skip_omit=kwargs.get("skip_omit", None), l2_reg=l2_reg, batch_norm=batch_norm)
+        return get_unet(n_classes, n_inputs=n_inputs, n_input_channels=n_input_channels, encoder_settings=encoder_settings, feature_settings=feature_settings, decoder_settings=decoder_settings, skip_omit=kwargs.get("skip_omit", None), l2_reg=l2_reg, activation=activation, batch_norm=batch_norm)
     else:
         raise ValueError(f"Unknown architecture: {architecture_type}")
 
-def get_unet(n_classes, n_inputs=1, n_input_channels=1, encoder_settings = ENCODER_SETTINGS, feature_settings= FEATURE_SETTINGS, decoder_settings=DECODER_SETTINGS, skip_sg=False, skip_omit=None, l2_reg:float=1e-4, batch_norm:bool=True, name = "unet", input_name = "unet_input"):
+def get_unet(n_classes, n_inputs=1, n_input_channels=1, encoder_settings = ENCODER_SETTINGS, feature_settings= FEATURE_SETTINGS, decoder_settings=DECODER_SETTINGS, skip_sg=False, skip_omit=None, l2_reg:float=1e-4, activation="relu", batch_norm:bool=True, name = "unet", input_name = "unet_input"):
     assert len(encoder_settings)==len(decoder_settings), "encoder and decoder must have same depth"
     if n_inputs == 1:
         input = Input(shape = (None, None, n_input_channels), name=input_name)
@@ -102,19 +102,19 @@ def get_unet(n_classes, n_inputs=1, n_input_channels=1, encoder_settings = ENCOD
     residuals = []
     downsample_size = []
     for d, parameters in enumerate(encoder_settings):
-        down, residual, down_size = encoder_block(input if d == 0 else down, parameters, d, len(encoder_settings), def_l2_reg=l2_reg, def_batch_norm=batch_norm)
+        down, residual, down_size = encoder_block(input if d == 0 else down, parameters, d, len(encoder_settings), def_l2_reg=l2_reg, def_activation=activation, def_batch_norm=batch_norm)
         if d in skip_sg:
             residual = K.stop_gradient(residual)
         residuals.append(residual)
         downsample_size.append(down_size)
     up = encoder_block(down, feature_settings, len(encoder_settings), len(encoder_settings), def_l2_reg=l2_reg, def_batch_norm=batch_norm)
     for d in range(len(decoder_settings)-1, -1, -1):
-        up=decoder_block(up, None if d in skip_omit else residuals[d], decoder_settings[d], downsample_size[d], d, def_l2_reg=l2_reg, def_batch_norm=batch_norm)
+        up=decoder_block(up, None if d in skip_omit else residuals[d], decoder_settings[d], downsample_size[d], d, def_l2_reg=l2_reg, def_activation=activation, def_batch_norm=batch_norm)
 
     output = Conv2D(n_classes, kernel_size=3, padding='same', dtype="float32", activation="softmax", name=f"output_conv")(up) # force float32 computation for softmax & loss precision
     return Model(inputs, output, name=name)
 
-def encoder_block(input, parameters, l_idx, total_layers, def_l2_reg:float=1e-4, def_batch_norm:bool=True):
+def encoder_block(input, parameters, l_idx, total_layers, def_l2_reg:float=1e-4, def_activation="relu", def_batch_norm:bool=True):
     x = input
     if parameters[-1].get("downscale", 1) > 1:
         res_idx = len(parameters) - 1 if parameters[-1].get("maxpool", False) else len(parameters) - 2
@@ -137,11 +137,11 @@ def encoder_block(input, parameters, l_idx, total_layers, def_l2_reg:float=1e-4,
             ker_reg, bias_reg = get_regularizers(l2_reg)
             x = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3), padding='same',
                        kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
-                       activation=None if batch_norm else params.get("activation", "relu"), strides = 1 if maxpool else downsample,
+                       activation=None if batch_norm else params.get("activation", def_activation), strides = 1 if maxpool else downsample,
                         name=name)(x)
             if batch_norm:
                 x = BatchNormalization(name=name+"_bn")(x)
-                x = Activation(params.get("activation", "relu"), name=name+"_act")(x)
+                x = Activation(params.get("activation", def_activation), name=name+"_act")(x)
         if residual:
             res, x = ResidualGradientLimiter(max_ratio=1., name=f"encoder{l_idx}_res_grad_limiter")( x )
         if downsample>1 and maxpool:
@@ -152,27 +152,27 @@ def encoder_block(input, parameters, l_idx, total_layers, def_l2_reg:float=1e-4,
     else:
         return x
 
-def decoder_block(input, residual, params, stride, l_idx, def_l2_reg:float=1e-4, def_batch_norm:bool=True):
+def decoder_block(input, residual, params, stride, l_idx, def_l2_reg:float=1e-4, def_activation="relu", def_batch_norm:bool=True):
     ker_reg, bias_reg = get_regularizers(params.get("l2_reg", def_l2_reg))
     batch_norm = params.get("batch_norm", def_batch_norm)
     x = Conv2DTranspose(params["filters"], kernel_size=params.get("up_kernel_size", 4), strides=stride, padding='same',
                          kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
-                         activation=None if batch_norm else params.get("activation", "relu"), name=f"decoder{l_idx}_upConv")(input)
+                         activation=None if batch_norm else params.get("activation", def_activation), name=f"decoder{l_idx}_upConv")(input)
     if batch_norm:
         x = BatchNormalization(name=f"decoder{l_idx}_upConv_bn")(x)
-        x = Activation(params.get("activation", "relu"), name=f"decoder{l_idx}_upConv_act")(x)
+        x = Activation(params.get("activation", def_activation), name=f"decoder{l_idx}_upConv_act")(x)
     if residual is not None:
         x = Concatenate(axis=-1, name = f"decoder{l_idx}_resConcat")([residual, x])
 
     x = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3), padding='same',
                   kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
-                  activation=params.get("activation", "relu"), name=f"decoder{l_idx}_op1")(x)
+                  activation=params.get("activation", def_activation), name=f"decoder{l_idx}_op1")(x)
     x = Conv2D(filters=params["filters"], kernel_size=params.get("kernel_size", 3),
                   kernel_regularizer=ker_reg, bias_regularizer=bias_reg,
-                  padding='same', activation=None if batch_norm else params.get("activation", "relu"), name=f"decoder{l_idx}_op2")(x)
+                  padding='same', activation=None if batch_norm else params.get("activation", def_activation), name=f"decoder{l_idx}_op2")(x)
     if batch_norm:
         x = BatchNormalization(name=f"decoder{l_idx}_op2_bn")(x)
-        x = Activation(params.get("activation", "relu"), name=f"decoder{l_idx}_op2_act")(x)
+        x = Activation(params.get("activation", def_activation), name=f"decoder{l_idx}_op2_act")(x)
     return x
 
 def get_regularizers(l2_reg:float):
