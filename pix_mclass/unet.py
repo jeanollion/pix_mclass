@@ -1,5 +1,4 @@
-from keras.src.layers import Activation
-from tensorflow.keras.layers import Conv2D, Conv3D, Input, MaxPool2D, Conv2DTranspose, Concatenate, BatchNormalization
+from tensorflow.keras.layers import Conv2D, Conv3D, Input, MaxPool2D, Conv2DTranspose, Concatenate, BatchNormalization, Activation
 from tensorflow.keras.models import Model
 import keras.backend as K
 import tensorflow as tf
@@ -180,10 +179,4 @@ def get_regularizers(l2_reg:float):
     return ker_reg, bias_reg
 
 def get_kernel_initializer(activation:str):
-    if activation is None:
-        return "glorot_uniform"
-    activation = activation.lower()
-    if "elu" in activation or "silu" in activation or activation == "mish":
-        return "he_normal"
-    else:
-        return "glorot_uniform"
+    return "glorot_uniform"
