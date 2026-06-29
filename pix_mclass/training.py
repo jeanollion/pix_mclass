@@ -9,6 +9,7 @@ def get_iterator(
     batch_size:int=16, step_number:int=0,
     tiling_parameters:dict = None,
     elasticdeform_parameters=None,
+    tridimensional_mode:bool=False,
     dtype="float32", shuffle:bool=True, memory_persistent:bool=False):
 
     """Training Iterator.
@@ -66,6 +67,7 @@ def get_iterator(
                            perform_data_augmentation=True,
                            elasticdeform_parameters=elasticdeform_parameters,
                            channels_postprocessing_function=pp_fun,
+                           n_spatial_dims=3 if tridimensional_mode else 2,
                            batch_size=batch_size,
                            incomplete_last_batch_mode="CONSTANT_SIZE",
                            shuffle=shuffle, step_number=step_number,
