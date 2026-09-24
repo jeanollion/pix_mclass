@@ -1,5 +1,6 @@
 import tensorflow as tf
-
+import inspect
+_LAYER_ADD_WEIGHT_HAS_AUTOCAST_ARG = 'autocast' in inspect.signature( tf.keras.layers.Layer.add_weight ).parameters
 
 def get_group_norm_groups(num_channels:int, target:int=32, min_per_group:int=4, warn_on_degenerate:bool=True):
     """Heuristic to pick number of channel groups for group-style normalization.
@@ -42,6 +43,36 @@ def get_group_norm_groups(num_channels:int, target:int=32, min_per_group:int=4, 
         )
     return 1
 
+def _avg_pool3d_via_2d(x, window):
+    """3D box-average pooling (SAME) implemented with only avg_pool2d.
+
+    Uses one reshape to fold Y,X together so Z can be pooled with a
+    (kz, 1) 2D kernel, then one reshape to fold B,Z together so Y,X can
+    be pooled with a (ky, kx) 2D kernel. Both reshapes only merge/split
+    already-contiguous axes (no axis permutation), so they're metadata-only
+    — no data copy, unlike a transpose.
+    """
+    kz, ky, kx = window
+    if kz <= 1 and ky <= 1 and kx <= 1:
+        return x
+
+    shape = tf.shape(x)
+    B, Z, Y, X, C = shape[0], shape[1], shape[2], shape[3], shape[4]
+
+    # reshape in: (B, Z, Y, X, C) -> (B, Z, Y*X, C)
+    x_r = tf.reshape(x, [B, Z, Y * X, C])
+    if kz > 1:
+        # kernel width 1 => no mixing across the flattened Y*X axis,
+        # this pools Z only.
+        x_r = tf.nn.avg_pool2d(x_r, ksize=[kz, 1], strides=[1, 1], padding='SAME')
+
+    # contiguous reshape, no transpose: (B, Z, Y*X, C) -> (B*Z, Y, X, C)
+    x_r = tf.reshape(x_r, [B * Z, Y, X, C])
+    if ky > 1 or kx > 1:
+        x_r = tf.nn.avg_pool2d(x_r, ksize=[ky, kx], strides=[1, 1], padding='SAME')
+
+    # reshape out: (B*Z, Y, X, C) -> (B, Z, Y, X, C)
+    return tf.reshape(x_r, [B, Z, Y, X, C])
 
 class WindowGroupNormalization(tf.keras.layers.Layer):
     """Per-(sample, group) normalization with locally-pooled stats over a fixed
@@ -122,14 +153,19 @@ class WindowGroupNormalization(tf.keras.layers.Layer):
             if dim is not None and ws[i] > dim:
                 ws[i] = dim
         self._window = ws
-
+        kw = dict(autocast=False) if _LAYER_ADD_WEIGHT_HAS_AUTOCAST_ARG else {}
         if self.scale:
-            self.gamma = self.add_weight(name="gamma", shape=(C,), initializer="ones", dtype="float32", autocast=False)
+            self.gamma = self.add_weight(name="gamma", shape=(C,), initializer="ones", dtype="float32", **kw)
         if self.center:
-            self.beta = self.add_weight(name="beta", shape=(C,), initializer="zeros", dtype="float32", autocast=False)
+            self.beta = self.add_weight(name="beta", shape=(C,), initializer="zeros", dtype="float32", **kw)
         # Broadcast shape for gamma/beta against (B, [Z,] Y, X, G, Cg) — built once.
         self._vars_shape = [1] * (n_spatial + 1) + [self.groups, self._channels_per_group]
         super().build(input_shape)
+
+    @staticmethod
+    def _f32(var):
+        """Read the underlying float32 variable, bypassing AutoCastVariable."""
+        return var._variable if hasattr(var, '_variable') else var
 
     def call(self, inputs):
         # Stats (mean, variance) are computed in fp32 for numerical stability
@@ -145,7 +181,7 @@ class WindowGroupNormalization(tf.keras.layers.Layer):
         for i in range(n_spatial):
             dim = static_shape[1 + i]
             is_global.append(dim is not None and self._window[i] >= dim)
-
+        #print(  f"is global: {is_global} window: {self.window_size} input size: {static_shape} effective window: {self._effective_window}")
         x_shape = tf.shape(x)
         if self._tridim:
             new_shape = tf.concat([x_shape[:4], [self.groups, self._channels_per_group]], axis=0)
@@ -165,10 +201,10 @@ class WindowGroupNormalization(tf.keras.layers.Layer):
             var = tf.maximum(ms - m * m, tf.cast(0.0, m.dtype))
             inv = tf.math.rsqrt(var + tf.cast(self.epsilon, var.dtype))
             if self.scale:
-                inv = inv * tf.reshape(self.gamma, self._vars_shape)
+                inv = inv * tf.reshape(self._f32(self.gamma), self._vars_shape)
             res = -m * inv
             if self.center:
-                res = res + tf.reshape(self.beta, self._vars_shape)
+                res = res + tf.reshape(self._f32(self.beta), self._vars_shape)
             x_g = x_g * inv + res
             out = tf.reshape(x_g, x_shape)
         else:
@@ -178,16 +214,13 @@ class WindowGroupNormalization(tf.keras.layers.Layer):
             # works for any input size (including smaller than the window) and preserves
             # spatial shape. For axes where window >= dim we pool with size 1 (no-op) and
             # reduce_mean over them afterwards so they behave globally.
-            effective_window = [
-                1 if is_global[i] else self._window[i] for i in range(n_spatial)
-            ]
-            x2 = x * x
+            effective_window = [ 1 if is_global[i] else self._window[i] for i in range(n_spatial) ]
+            stacked = tf.concat([x, x * x], axis=-1)
             if self._tridim:
-                m_ch  = tf.nn.avg_pool3d(x,  ksize=effective_window, strides=[1, 1, 1], padding='SAME')
-                ms_ch = tf.nn.avg_pool3d(x2, ksize=effective_window, strides=[1, 1, 1], padding='SAME')
+                pooled = _avg_pool3d_via_2d(stacked, effective_window)
             else:
-                m_ch  = tf.nn.avg_pool2d(x,  ksize=effective_window, strides=[1, 1], padding='SAME')
-                ms_ch = tf.nn.avg_pool2d(x2, ksize=effective_window, strides=[1, 1], padding='SAME')
+                pooled  = tf.nn.avg_pool2d(stacked,  ksize=effective_window, strides=[1, 1], padding='SAME')
+            m_ch, ms_ch = tf.split(pooled, 2, axis=-1)
 
             # Reduce_mean over global axes (broadcast back via keepdims=True).
             global_axes = [1 + i for i in range(n_spatial) if is_global[i]]
@@ -207,10 +240,10 @@ class WindowGroupNormalization(tf.keras.layers.Layer):
             x_g = tf.reshape(x, new_shape)
             inv = tf.math.rsqrt(var + tf.cast(self.epsilon, var.dtype))
             if self.scale:
-                inv = inv * tf.reshape(self.gamma, self._vars_shape)
+                inv = inv * tf.reshape(self._f32(self.gamma), self._vars_shape)
             res = -m * inv
             if self.center:
-                res = res + tf.reshape(self.beta, self._vars_shape)
+                res = res + tf.reshape(self._f32(self.beta), self._vars_shape)
             x_g = x_g * inv + res
             out = tf.reshape(x_g, x_shape)
         return tf.cast(out, inputs.dtype)
