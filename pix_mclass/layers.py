@@ -18,7 +18,6 @@ class ResidualGradientLimiter(tf.keras.layers.Layer):
         self.max_ratio = max_ratio
         self.epsilon = epsilon
 
-
     @tf.custom_gradient
     def _limit_gradients(self, x):
         skip, main = x
