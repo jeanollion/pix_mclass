@@ -6,7 +6,7 @@ class CappedReLU:
     magnitude (low-precision stability / prevents fp16 overflow in deep residual
     streams) while keeping plain-ReLU behavior below max_value. Callable, so
     tf.keras.activations.get(instance) returns it unchanged."""
-    def __init__(self, max_value=6.):
+    def __init__(self, max_value=32.):
         self.max_value = float(max_value)
     def __call__(self, x):
         return tf.keras.activations.relu(x, max_value=float(self.max_value))
@@ -169,7 +169,7 @@ def _parse_cap_beta(tail):
 
 def get_activation(spec):
     """Resolve an activation spec to something usable as a layer `activation`.
-      'reluN'     (e.g. 'relu6', 'relu30')     -> CappedReLU(N)       (hard ReLU capped at N)
+      'reluN'     (e.g. 'relu6', 'relu32')     -> CappedReLU(N)       (hard ReLU capped at N)
       'screluN'   (e.g. 'screlu30')            -> SmoothCappedReLU(N) (smooth cap at N, hard ReLU at 0)
       'dscreluN'  (e.g. 'dscrelu30')           -> DoublySmoothCappedReLU(N) (smooth shoulder at BOTH 0 and N)
       'screluN'/'dscreluN' accept an optional 'b<beta>' suffix encoding beta without its
