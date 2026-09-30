@@ -184,12 +184,13 @@ class TemperedFocalCrossEntropy(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         """
         Args:
-            y_true: One-hot encoded labels, shape (batch_size, (Y, X), num_classes) if sparse else dense labels (batch_size, (Y, X), 1)
+            y_true: sparse class indices, shape (batch_size, (Y, X), 1) if sparse else
+                    one-hot encoded labels, shape (batch_size, (Y, X), num_classes)
             y_pred: Predicted probabilities, shape (batch_size, (Y, X), num_classes)
         """
         epsilon = tf.keras.backend.epsilon()
         y_pred = tf.clip_by_value(y_pred, epsilon, 1. - epsilon)
-        num_classes = tf.cast(tf.shape(y_true)[-1], y_true.dtype)
+        num_classes = tf.cast(tf.shape(y_pred)[-1], y_pred.dtype)
         if self.sparse: # Convert sparse labels to one-hot encoded labels
             y_true = tf.one_hot(tf.cast(tf.squeeze(y_true, -1), tf.int32), depth=tf.cast(num_classes, tf.int32), dtype=y_pred.dtype)
 

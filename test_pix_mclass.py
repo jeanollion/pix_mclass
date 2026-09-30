@@ -17,6 +17,9 @@ The test classes exercise:
   ``downscale`` tuple and the model still round-trips spatial shapes.
 * :class:`TestInputShapeCap` — the ``input_shape`` argument of
   ``get_model`` caps per-axis downscale.
+* :class:`TestTemperedFocalCrossEntropySparse` — the sparse-label path of
+  ``TemperedFocalCrossEntropy`` agrees with the dense one-hot path and is
+  symmetric across classes.
 """
 
 from pathlib import Path
@@ -42,6 +45,10 @@ try:
 except ImportError:  # pragma: no cover - tensorflow is a required runtime dep
     tf = None
 
+from pix_mclass.losses import (
+    TemperedFocalCrossEntropy,
+    get_weighted_sparse_categorical_tempered_focal_loss,
+)
 from pix_mclass.unet import (
     get_model,
     get_unet,
@@ -783,6 +790,175 @@ class TestGetIterator(unittest.TestCase):
         self.assertEqual(x.ndim, 5, "3D batch must have rank 5: (B, D, H, W, C)")
         self.assertEqual(y.ndim, 5)
         self.assertEqual(x.shape[0], 1)
+
+
+@unittest.skipIf(tf is None, "tensorflow is required for loss tests")
+class TestTemperedFocalCrossEntropySparse(unittest.TestCase):
+    """Cover the sparse-label path of :class:`TemperedFocalCrossEntropy`.
+
+    Regression guard for a bug where ``num_classes`` was read from ``y_true``
+    instead of ``y_pred``. In sparse mode ``y_true``'s last axis holds class
+    *indices* (size 1), so the one-hot was built with ``depth=1`` and then
+    broadcast over the class axis. The loss became ``sum_k -log(p_k)``, whose
+    minimum is the *uniform* distribution: training collapsed to a flat softmax
+    and only class 0 carried any gradient.
+
+    The parameter grid below spans every branch of ``call`` / ``_tempered_log``
+    (label smoothing, focal weighting, tempered log, pseudo-Huber floor), since
+    ``num_classes`` feeds both the one-hot depth and the smoothing target.
+    """
+
+    N_CLASSES = 3
+
+    # (label_smoothing, focal_weight, temperature, pseudo_huber)
+    PARAM_GRID = (
+        (0.0, 0.0, 0.0, 0.0),    # plain cross-entropy
+        (0.01, 0.0, 0.0, 0.0),   # label smoothing only
+        (0.0, 2.0, 0.0, 0.0),    # focal only
+        (0.0, 0.0, 0.5, 0.0),    # tempered log only
+        (0.0, 0.0, 0.0, 0.3),    # pseudo-Huber floor only
+        (0.1, 2.0, 0.2, 0.2),    # everything at once
+    )
+
+    def _loss(self, sparse, **kwargs):
+        return TemperedFocalCrossEntropy(sparse=sparse, **kwargs)
+
+    def _params(self, ls, fw, t, ph):
+        return dict(label_smoothing=ls, focal_weight=fw, temperature=t, pseudo_huber=ph)
+
+    @staticmethod
+    def _sparse_labels(classes):
+        """(N,) class indices -> sparse label tensor of shape (N, 1, 1)."""
+        return tf.constant(np.asarray(classes, dtype="float32").reshape(-1, 1, 1))
+
+    @classmethod
+    def _one_hot_labels(cls, classes):
+        """(N,) class indices -> dense one-hot tensor of shape (N, 1, n_classes)."""
+        idx = np.asarray(classes, dtype="int32")
+        dense = np.eye(cls.N_CLASSES, dtype="float32")[idx]
+        return tf.constant(dense.reshape(-1, 1, cls.N_CLASSES))
+
+    @classmethod
+    def _preds(cls, rows):
+        return tf.constant(np.asarray(rows, dtype="float32").reshape(-1, 1, cls.N_CLASSES))
+
+    def test_sparse_matches_dense_one_hot(self):
+        """Sparse indices and the equivalent one-hot labels must give equal loss.
+
+        This is the direct regression test: pre-fix the sparse branch built a
+        depth-1 one-hot, so the two paths disagreed.
+        """
+        classes = [0, 1, 2, 1]
+        y_sparse = self._sparse_labels(classes)
+        y_dense = self._one_hot_labels(classes)
+        y_pred = self._preds([
+            [0.70, 0.20, 0.10],
+            [0.15, 0.80, 0.05],
+            [0.25, 0.15, 0.60],
+            [0.40, 0.35, 0.25],
+        ])
+        for ls, fw, t, ph in self.PARAM_GRID:
+            with self.subTest(label_smoothing=ls, focal_weight=fw, temperature=t, pseudo_huber=ph):
+                params = self._params(ls, fw, t, ph)
+                sparse_loss = self._loss(True, **params).call(y_sparse, y_pred).numpy()
+                dense_loss = self._loss(False, **params).call(y_dense, y_pred).numpy()
+                np.testing.assert_allclose(sparse_loss, dense_loss, rtol=1e-5, atol=1e-6)
+
+    def test_loss_is_symmetric_across_classes(self):
+        """The same prediction quality must cost the same whatever the true class.
+
+        Pre-fix only class 0 contributed (classes 1/2 were left with the
+        label-smoothing residue, ~100x smaller).
+        """
+        y_true = self._sparse_labels([0, 1, 2])
+        y_pred = self._preds([
+            [0.8, 0.1, 0.1],
+            [0.1, 0.8, 0.1],
+            [0.1, 0.1, 0.8],
+        ])
+        for ls, fw, t, ph in self.PARAM_GRID:
+            with self.subTest(label_smoothing=ls, focal_weight=fw, temperature=t, pseudo_huber=ph):
+                loss = self._loss(True, **self._params(ls, fw, t, ph)).call(y_true, y_pred).numpy().ravel()
+                np.testing.assert_allclose(loss, loss[0], rtol=1e-5, atol=1e-6)
+
+    def test_correct_prediction_beats_uniform(self):
+        """A confident correct prediction must cost less than a uniform softmax.
+
+        Pre-fix this was inverted (4.83 correct vs 3.30 uniform), making the
+        flat output the loss minimum -- the "collapse to uniform" symptom.
+        """
+        classes = [0, 1, 2]
+        y_true = self._sparse_labels(classes)
+        correct = self._preds([
+            [0.8, 0.1, 0.1],
+            [0.1, 0.8, 0.1],
+            [0.1, 0.1, 0.8],
+        ])
+        uniform = self._preds([[1.0 / self.N_CLASSES] * self.N_CLASSES] * len(classes))
+        for ls, fw, t, ph in self.PARAM_GRID:
+            with self.subTest(label_smoothing=ls, focal_weight=fw, temperature=t, pseudo_huber=ph):
+                loss = self._loss(True, **self._params(ls, fw, t, ph))
+                correct_loss = loss.call(y_true, correct).numpy()
+                uniform_loss = loss.call(y_true, uniform).numpy()
+                self.assertTrue(
+                    np.all(correct_loss < uniform_loss),
+                    f"correct prediction must cost less than uniform: "
+                    f"{correct_loss.ravel()} vs {uniform_loss.ravel()}",
+                )
+
+    def test_loss_decreases_with_confidence_in_true_class(self):
+        """Loss must be monotonically decreasing in the true-class probability.
+
+        Only below the confidence ceiling set by label smoothing: with smoothing
+        strength eps the optimum sits at ``p_true ~ 1 - eps`` and the loss turns
+        back up beyond it, which is precisely what smoothing is for. So the sweep
+        stops short of ``1 - eps``.
+        """
+        y_true = self._sparse_labels([0])
+        for ls, fw, t, ph in self.PARAM_GRID:
+            with self.subTest(label_smoothing=ls, focal_weight=fw, temperature=t, pseudo_huber=ph):
+                loss = self._loss(True, **self._params(ls, fw, t, ph))
+                ceiling = 1.0 - ls
+                values = [
+                    float(loss.call(y_true, self._preds([[p, (1.0 - p) / 2.0, (1.0 - p) / 2.0]])).numpy().ravel()[0])
+                    for p in (0.05, 0.2, 0.4, 0.6, 0.8, 0.95) if p < ceiling
+                ]
+                self.assertGreater(len(values), 2, "sweep must retain enough points to be meaningful")
+                self.assertTrue(
+                    np.all(np.diff(values) < 0),
+                    f"loss must decrease as p_true grows (below the {ceiling:.2f} "
+                    f"smoothing ceiling), got {values}",
+                )
+
+    def test_sparse_output_shape_drops_class_axis(self):
+        """Loss must be per-pixel (class axis reduced) to match sample_weight rank."""
+        y_true = tf.constant(np.zeros((2, 4, 5, 1), dtype="float32"))
+        y_pred = tf.constant(np.full((2, 4, 5, self.N_CLASSES), 1.0 / self.N_CLASSES, dtype="float32"))
+        loss = self._loss(True, **self._params(0.01, 2.0, 0.0, 0.0))
+        self.assertEqual(loss.call(y_true, y_pred).shape, (2, 4, 5))
+
+    def test_weighted_sparse_loss_wrapper_is_class_symmetric(self):
+        """The wrapper used by the training script must also be class-symmetric.
+
+        ``get_weighted_sparse_categorical_tempered_focal_loss`` is what
+        ``training_pixmclass.py`` actually builds; it splits ``y_true`` into
+        (labels, annotation mask) and applies per-class weights.
+        """
+        weights = np.ones((self.N_CLASSES,), dtype="float32")
+        loss_func = get_weighted_sparse_categorical_tempered_focal_loss(
+            weights, dtype="float32", label_smoothing=0.01, focal_weight=0.0,
+            temperature=0.0, pseudo_huber=0.0,
+        )
+        labels = np.array([0, 1, 2], dtype="float32").reshape(-1, 1, 1)
+        mask = np.ones_like(labels)                      # all pixels annotated
+        y_true = tf.constant(np.concatenate([labels, mask], axis=-1))
+        y_pred = self._preds([
+            [0.8, 0.1, 0.1],
+            [0.1, 0.8, 0.1],
+            [0.1, 0.1, 0.8],
+        ])
+        per_class = [float(loss_func(y_true[i:i + 1], y_pred[i:i + 1]).numpy()) for i in range(self.N_CLASSES)]
+        np.testing.assert_allclose(per_class, per_class[0], rtol=1e-5, atol=1e-6)
 
 
 if __name__ == "__main__":  # pragma: no cover
